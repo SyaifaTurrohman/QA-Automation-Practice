@@ -24,6 +24,7 @@ export class ApplicationPage {
     await this.companyInput.fill(company);
     await this.positionInput.fill(position);
     await this.submitButton.click();
+    await this.cardFor(company).waitFor();
   }
 
   async changeStatus(company, status) {
