@@ -30,6 +30,8 @@ test.describe('API Lamaran Kerja', () => {
     return body;
   }
 
+  // ---------- Skenario normal ----------
+
   test('GET /applications mengembalikan daftar lamaran', async ({ request }) => {
     const response = await request.get(`${API}/applications`);
 
@@ -72,11 +74,59 @@ test.describe('API Lamaran Kerja', () => {
     expect(list.some((a) => a.id === created.id)).toBe(false);
   });
 
+  // ---------- Skenario negatif ----------
+
+  test('GET /applications/:id dengan id angka yang tidak ada mengembalikan 404', async ({ request }) => {
+    const response = await request.get(`${API}/applications/999999`);
+
+    expect(response.status()).toBe(404);
+  });
+
+  test('POST /applications dengan body kosong ditolak (400)', async ({ request }) => {
+    const response = await request.post(`${API}/applications`, { data: {} });
+
+    // Jaga-jaga: kalau validasi suatu hari hilang, data sampah tetap ikut dibersihkan
+    if (response.ok()) {
+      createdIds.push((await response.json()).id);
+    }
+
+    expect(response.status()).toBe(400);
+  });
+
+  test('PUT /applications/:id dengan status tidak valid tidak mengubah data', async ({ request }) => {
+    const created = await createApplication(request);
+
+    // Status code sengaja tidak diperiksa di sini; yang diuji hanya efeknya pada data
+    await request.put(`${API}/applications/${created.id}`, {
+      data: { status: 'NGAWUR' },
+    });
+
+    const list = await (await request.get(`${API}/applications`)).json();
+    const found = list.find((a) => a.id === created.id);
+    expect(found.status).toBe('APPLIED');
+  });
+
+  // ---------- Bug yang sudah diketahui ----------
+
   test('GET /applications/:id dengan id bukan angka ditolak sebagai error klien', async ({ request }) => {
-    // Bug yang sudah diketahui: saat ini server mengembalikan 500
+    // BUG-JAT-002: saat ini server mengembalikan 500 untuk id bukan angka
     test.fail();
 
     const response = await request.get(`${API}/applications/abc`);
+
+    expect(response.status()).toBeGreaterThanOrEqual(400);
+    expect(response.status()).toBeLessThan(500);
+  });
+
+  test('PUT /applications/:id dengan status tidak valid ditolak sebagai error klien', async ({ request }) => {
+    // BUG-JAT-003: saat ini server mengembalikan 500 untuk nilai status di luar enum
+    test.fail();
+
+    const created = await createApplication(request);
+
+    const response = await request.put(`${API}/applications/${created.id}`, {
+      data: { status: 'NGAWUR' },
+    });
 
     expect(response.status()).toBeGreaterThanOrEqual(400);
     expect(response.status()).toBeLessThan(500);

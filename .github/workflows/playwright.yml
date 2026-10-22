@@ -1,27 +1,74 @@
 name: Playwright Tests
+
 on:
   push:
-    branches: [ main, master ]
+    branches: [main]
   pull_request:
-    branches: [ main, master ]
+    branches: [main]
+
+permissions:
+  contents: read
+
 jobs:
   test:
-    timeout-minutes: 60
-    runs-on: ubuntu-latest
+    name: test
+    timeout-minutes: 20
+    # Versi dipatok supaya tidak ikut berpindah saat ubuntu-latest naik versi
+    runs-on: ubuntu-24.04
+
     steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-node@v4
-      with:
-        node-version: lts/*
-    - name: Install dependencies
-      run: npm ci
-    - name: Install Playwright Browsers
-      run: npx playwright install --with-deps
-    - name: Run Playwright tests
-      run: npx playwright test
-    - uses: actions/upload-artifact@v4
-      if: ${{ !cancelled() }}
-      with:
-        name: playwright-report
-        path: playwright-report/
-        retention-days: 30
+      - name: Ambil kode repo test
+        uses: actions/checkout@v4
+
+      - name: Ambil kode aplikasi Job Tracker
+        uses: actions/checkout@v4
+        with:
+          repository: SyaifaTurrohman/job-application-tracker
+          path: app
+
+      - name: Siapkan .env (nilai dummy, sama dengan docker-compose.yml)
+        run: |
+          printf 'DATABASE_URL=postgresql://postgres:postgres@postgres:5432/job_tracker\nPORT=5000\n' > app/backend/.env
+
+      - name: Jalankan aplikasi (Docker Compose)
+        working-directory: app
+        run: docker compose up -d --build
+
+      - name: Tunggu backend siap
+        run: >
+          curl --silent --fail --output /dev/null
+          --retry 40 --retry-delay 2 --retry-all-errors --retry-connrefused
+          http://localhost:5000/api/applications
+
+      - name: Tunggu frontend siap
+        run: >
+          curl --silent --fail --output /dev/null
+          --retry 40 --retry-delay 2 --retry-all-errors --retry-connrefused
+          http://localhost:5173
+
+      - name: Pasang Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Pasang dependensi
+        run: npm ci
+
+      - name: Pasang browser Playwright
+        run: npx playwright install --with-deps
+
+      - name: Jalankan test
+        run: npx playwright test
+
+      - name: Simpan laporan test
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 30
+
+      - name: Tampilkan log aplikasi (hanya jika gagal)
+        if: failure()
+        working-directory: app
+        run: docker compose logs --tail 100
